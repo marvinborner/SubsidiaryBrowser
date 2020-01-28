@@ -1,9 +1,10 @@
+const PARENT = "Q7414"; // Q695087
 const query = `
 SELECT DISTINCT ?item ?itemLabel ?image ?subsidiaries WHERE {
   {
     SELECT ?item WHERE { ?item (wdt:P31/wdt:P279*) wd:Q43229. }
   }
-  ?item (wdt:P127|^wdt:P199|^wdt:P1830|^wdt:P355)+ wd:Q695087 .
+  ?item (wdt:P127|^wdt:P199|^wdt:P1830|^wdt:P355)+ wd:${PARENT} .
   OPTIONAL { ?item wdt:P154 ?image . }
   OPTIONAL { 
     ?item wdt:P1830 ?subsidiariesObj .
@@ -14,41 +15,75 @@ SELECT DISTINCT ?item ?itemLabel ?image ?subsidiaries WHERE {
 }
 `;
 
-const width = window.innerWidth;
-const height = window.innerHeight;
+let nodes = [];
 
 function extract_nodes(orig) {
   let data = orig.slice();
 
   data.forEach(elem => elem["name"] = elem["itemLabel"]["value"]);
+  data.filter(elem => elem["subsidiaries"] !== undefined).forEach(elem => {
+    data.push({"name": elem["subsidiaries"]["value"], "is_subsidiary": true});
+    data.push({"name": elem["name"]});
+  });
   data = data.filter(elem => elem["subsidiaries"] === undefined);
-  data.forEach(elem => elem["id"] = elem["item"]["value"].replace("http://www.wikidata.org/entity/", ""));
 
+  // THIS IS NOT PRETTY!
+  const names = [];
+  data = data.filter(elem => names.includes(elem["name"]) ? false : names.push(elem["name"]));
+
+  data.unshift({"name": "MARS", "parent": 0});
+
+  nodes = data;
   return data;
 }
 
 function extract_links(orig) {
+  const links = [];
   let data = orig.slice();
+  console.log(JSON.parse(JSON.stringify(data)));
+  console.log(JSON.parse(JSON.stringify(nodes)));
 
+  // Sub-sub
+  data.filter(elem => elem["subsidiaries"] !== undefined).forEach(elem => links.push(
+    {
+      "source": nodes.findIndex(node => node["name"] === elem["name"]),
+      "target": nodes.findIndex(node => node["name"] === elem["subsidiaries"]["value"]),
+      "weight": 1
+    }
+  ));
+
+  // Normal
+  nodes.filter(elem => !elem["is_subsidiary"]).forEach(elem => {
+    links.push(
+      {
+        "source": 0,
+        "target": nodes.findIndex(node => node["name"] === elem["name"]),
+        "weight": 1
+      }
+    )
+  });
+
+  console.log(links);
+
+  return links;
 }
 
 function draw(data) {
-  console.log(data);
-  data = {
-    "nodes": data["nodes"],
-    "links": [
-      {"source": 2, "target": 1, "weight": 1},
-      {"source": 0, "target": 2, "weight": 3}
-    ]
-  };
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  document.getElementById("loading").remove();
 
   const svg = d3.select("body").append("svg")
     .attr("width", width)
-    .attr("height", height);
+    .attr("height", height)
+    .call(d3.behavior.zoom().on("zoom", function () {
+      svg.attr("transform", "translate(" + d3.event.translate + ")" + " scale(" + d3.event.scale + ")")
+    }))
+    .append("g");
 
   const force = d3.layout.force()
-    .gravity(.05)
-    .distance(100)
+    .gravity(.005)
+    .distance(300)
     .charge(-100)
     .size([width, height]);
 
