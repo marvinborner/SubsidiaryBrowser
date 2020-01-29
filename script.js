@@ -1,17 +1,22 @@
+const debug = true;
+
 const PARENT = "Q7414"; // Q695087
 const query = `
-SELECT DISTINCT ?item ?itemLabel ?image ?subsidiaries WHERE {
+SELECT DISTINCT ?item ?itemLabel ?parent ?subsidiaries WHERE {
   {
-    SELECT ?item WHERE { ?item (wdt:P31/wdt:P279*) wd:Q43229. }
+    SELECT ?item WHERE { ?item wdt:P127+ wd:${PARENT} }
   }
-  ?item (wdt:P127|^wdt:P199|^wdt:P1830|^wdt:P355)+ wd:${PARENT} .
-  OPTIONAL { ?item wdt:P154 ?image . }
+  OPTIONAL { 
+    ?item (wdt:P127|wdt:P361|wdt:P749) ?parentObj .
+    ?parentObj rdfs:label ?parent .
+    FILTER(LANG(?parent) = "en") .
+  }
   OPTIONAL { 
     ?item wdt:P1830 ?subsidiariesObj .
-    ?subsidiariesObj rdfs:label ?subsidiaries.
-    FILTER(LANG(?subsidiaries) = "en").
+    ?subsidiariesObj rdfs:label ?subsidiaries .
+    FILTER(LANG(?subsidiaries) = "en") .
   }
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en" . }
 }
 `;
 
@@ -20,43 +25,39 @@ let nodes = [];
 function extract_nodes(orig) {
   let data = orig.slice();
 
-  data.forEach(elem => elem["name"] = elem["itemLabel"]["value"]);
-  data.filter(elem => elem["subsidiaries"] !== undefined).forEach(elem => {
-    data.push({"name": elem["subsidiaries"]["value"], "is_subsidiary": true});
-    data.push({"name": elem["name"]});
+  // Clean up
+  data.forEach(elem => {
+    elem["name"] = elem["itemLabel"]["value"];
+    elem["parent"] = elem["parent"]["value"];
+    elem["subsidiary"] = elem["subsidiaries"] ? elem["subsidiaries"]["value"] : false;
+    delete elem["itemLabel"];
+    delete elem["item"];
+    delete elem["subsidiaries"];
   });
-  data = data.filter(elem => elem["subsidiaries"] === undefined);
 
-  // THIS IS NOT PRETTY!
-  const names = [];
-  data = data.filter(elem => names.includes(elem["name"]) ? false : names.push(elem["name"]));
+  // Add subsidiaries
+  data.forEach(elem => {
+    if (elem["subsidiary"] !== false) {
+      data.push({"name": elem["subsidiary"], "parent": elem["name"], "subsidiary": false});
+    }
+  });
 
-  data.unshift({"name": "MARS", "parent": 0});
-
-  nodes = data;
+  nodes = data; // NOT WORKING CORRECTLY => SOLUTION: Extra nodes array with subsidiaries array and unique names?
   return data;
 }
 
-function extract_links(orig) {
-  const links = [];
-  let data = orig.slice();
-  console.log(JSON.parse(JSON.stringify(data)));
+function extract_links() {
+  let links = [];
   console.log(JSON.parse(JSON.stringify(nodes)));
 
-  // Sub-sub
-  data.filter(elem => elem["subsidiaries"] !== undefined).forEach(elem => links.push(
-    {
-      "source": nodes.findIndex(node => node["name"] === elem["name"]),
-      "target": nodes.findIndex(node => node["name"] === elem["subsidiaries"]["value"]),
-      "weight": 1
-    }
-  ));
-
   // Normal
-  nodes.filter(elem => !elem["is_subsidiary"]).forEach(elem => {
+  nodes.forEach(elem => {
+    if (nodes.findIndex(node => node["name"] === elem["parent"]) === -1)
+      nodes.push({"name": elem["parent"], "parent": elem["name"], "subsidiary": false});
+
     links.push(
       {
-        "source": 0,
+        "source": nodes.findIndex(node => node["name"] === elem["parent"]),
         "target": nodes.findIndex(node => node["name"] === elem["name"]),
         "weight": 1
       }
@@ -122,7 +123,7 @@ function draw(data) {
   });
 }
 
-fetch("https://query.wikidata.org/sparql?query=" + query, {
+fetch(!debug ? "https://query.wikidata.org/sparql?query=" + query : "out.json", {
   headers: new Headers({'Accept': 'application/sparql-results+json'})
 }).then(async response => (await response.json())["results"]["bindings"])
   .then(data => [extract_nodes(data), extract_links(data)])
