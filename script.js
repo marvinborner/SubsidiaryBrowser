@@ -146,3 +146,5 @@ function update(selector) {
     .then(data => [extract_nodes(data), extract_links(data)])
     .then(extracted => draw({"nodes": extracted[0], "links": extracted[1]}));
 }
+
+update(document.getElementById("selector"));
