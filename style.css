@@ -6,6 +6,16 @@ html, body {
     overflow: hidden;
 }
 
+h1 {
+    display: none;
+}
+
+select {
+    position: fixed;
+    top: 0;
+    left: 0;
+}
+
 .link {
     stroke: #aaa;
 }

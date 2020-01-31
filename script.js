@@ -1,13 +1,10 @@
 const debug = false;
 
-const nestle = "Q160746";
-const mars = "Q695087";
-const disney = "Q7414";
-const starbucks = "Q37158";
-const query = `
+let selected = "";
+const query = () => `
 SELECT DISTINCT ?item ?itemLabel ?parent ?subsidiaries WHERE {
   {
-    SELECT ?item WHERE { ?item wdt:P127+ wd:${nestle} }
+    SELECT ?item WHERE { ?item wdt:P127+ wd:${selected} }
   }
   OPTIONAL { 
     ?item (wdt:P127|wdt:P361|wdt:P749) ?parentObj .
@@ -27,6 +24,7 @@ let nodes = [];
 
 function extract_nodes(orig) {
   let data = orig.slice();
+  nodes = [];
 
   data.forEach(elem => {
     if (nodes.findIndex(node => node["name"] === elem["itemLabel"]["value"]) === -1) {
@@ -83,15 +81,13 @@ function extract_links() {
     });
   });
 
-  console.log(links);
-
   return links;
 }
 
 function draw(data) {
   const width = window.innerWidth;
   const height = window.innerHeight;
-  document.getElementById("loading").remove();
+  document.getElementById("loading").style.display = "none";
 
   const svg = d3.select("body").append("svg")
     .attr("width", width)
@@ -105,9 +101,7 @@ function draw(data) {
     .gravity(.005)
     .distance(300)
     .charge(-100)
-    .size([width, height]);
-
-  force
+    .size([width, height])
     .nodes(data.nodes)
     .links(data.links)
     .start();
@@ -142,8 +136,13 @@ function draw(data) {
   });
 }
 
-fetch(!debug ? "https://query.wikidata.org/sparql?query=" + query : "out.json", {
-  headers: new Headers({'Accept': 'application/sparql-results+json'})
-}).then(async response => (await response.json())["results"]["bindings"])
-  .then(data => [extract_nodes(data), extract_links(data)])
-  .then(extracted => draw({"nodes": extracted[0], "links": extracted[1]}));
+function update(selector) {
+  document.getElementById("loading").style.display = "block";
+  document.getElementsByTagName("svg")[0].remove();
+  selected = selector.value;
+  fetch(!debug ? "https://query.wikidata.org/sparql?query=" + query() : "out.json", {
+    headers: new Headers({'Accept': 'application/sparql-results+json'})
+  }).then(async response => (await response.json())["results"]["bindings"])
+    .then(data => [extract_nodes(data), extract_links(data)])
+    .then(extracted => draw({"nodes": extracted[0], "links": extracted[1]}));
+}
