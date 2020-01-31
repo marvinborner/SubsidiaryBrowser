@@ -1,10 +1,13 @@
-const debug = true;
+const debug = false;
 
-const PARENT = "Q7414"; // Q695087
+const nestle = "Q160746";
+const mars = "Q695087";
+const disney = "Q7414";
+const starbucks = "Q37158";
 const query = `
 SELECT DISTINCT ?item ?itemLabel ?parent ?subsidiaries WHERE {
   {
-    SELECT ?item WHERE { ?item wdt:P127+ wd:${PARENT} }
+    SELECT ?item WHERE { ?item wdt:P127+ wd:${nestle} }
   }
   OPTIONAL { 
     ?item (wdt:P127|wdt:P361|wdt:P749) ?parentObj .
@@ -25,43 +28,59 @@ let nodes = [];
 function extract_nodes(orig) {
   let data = orig.slice();
 
-  // Clean up
   data.forEach(elem => {
-    elem["name"] = elem["itemLabel"]["value"];
-    elem["parent"] = elem["parent"]["value"];
-    elem["subsidiary"] = elem["subsidiaries"] ? elem["subsidiaries"]["value"] : false;
-    delete elem["itemLabel"];
-    delete elem["item"];
-    delete elem["subsidiaries"];
-  });
+    if (nodes.findIndex(node => node["name"] === elem["itemLabel"]["value"]) === -1) {
+      nodes.push({
+        "name": elem["itemLabel"]["value"],
+        "parent": elem["parent"]["value"],
+        "subsidiaries": []
+      })
+    }
 
-  // Add subsidiaries
-  data.forEach(elem => {
-    if (elem["subsidiary"] !== false) {
-      data.push({"name": elem["subsidiary"], "parent": elem["name"], "subsidiary": false});
+    if (elem["subsidiaries"]) {
+      nodes[nodes.findIndex(node => node["name"] === elem["itemLabel"]["value"])]["subsidiaries"].push(elem["subsidiaries"]["value"]);
+
+      if (nodes.findIndex(node => node["name"] === elem["subsidiaries"]["value"]) === -1)
+        nodes.push({
+          "name": elem["subsidiaries"]["value"],
+          "parent": elem["itemLabel"]["value"],
+          "subsidiaries": []
+        });
     }
   });
 
-  nodes = data; // NOT WORKING CORRECTLY => SOLUTION: Extra nodes array with subsidiaries array and unique names?
-  return data;
+  nodes.forEach(elem => {
+    if (nodes.findIndex(node => node["name"] === elem["parent"]) === -1)
+      nodes.push({"name": elem["parent"], "parent": elem["name"], "subsidiaries": []});
+  });
+
+  return nodes;
 }
 
 function extract_links() {
   let links = [];
-  console.log(JSON.parse(JSON.stringify(nodes)));
+  console.table(JSON.parse(JSON.stringify(nodes)));
 
   // Normal
   nodes.forEach(elem => {
-    if (nodes.findIndex(node => node["name"] === elem["parent"]) === -1)
-      nodes.push({"name": elem["parent"], "parent": elem["name"], "subsidiary": false});
-
     links.push(
       {
         "source": nodes.findIndex(node => node["name"] === elem["parent"]),
         "target": nodes.findIndex(node => node["name"] === elem["name"]),
         "weight": 1
       }
-    )
+    );
+
+    elem["subsidiaries"].forEach(sub => {
+      console.log(sub);
+      links.push(
+        {
+          "source": nodes.findIndex(node => node["name"] === elem["name"]),
+          "target": nodes.findIndex(node => node["name"] === sub),
+          "weight": 1
+        }
+      )
+    });
   });
 
   console.log(links);
