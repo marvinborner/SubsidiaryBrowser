@@ -1,4 +1,4 @@
-const debug = false;
+const debug = true;
 
 let selected = "";
 const query = () => `
@@ -142,7 +142,7 @@ function update(selector) {
   selected = selector.value;
   fetch(!debug ? "https://query.wikidata.org/sparql?query=" + query() : "out.json", {
     headers: new Headers({'Accept': 'application/sparql-results+json'})
-  }).then(async response => (await response.json())["results"]["bindings"])
+  }).then(async response => !debug ? (await response.json())["results"]["bindings"] : (await response.json())[selector.selectedIndex]["results"]["bindings"])
     .then(data => [extract_nodes(data), extract_links(data)])
     .then(extracted => draw({"nodes": extracted[0], "links": extracted[1]}));
 }
